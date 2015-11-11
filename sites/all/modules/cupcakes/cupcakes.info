@@ -1,0 +1,10 @@
+name = Cupcakes
+description = Contains all hooks for the project
+package = Cupcakes
+core = 7.x
+
+; Information added by Drupal.org packaging script on 2015-04-29
+version = "7.0"
+project = "cupcakes"
+
+

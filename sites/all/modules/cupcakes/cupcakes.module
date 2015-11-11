@@ -1,0 +1,165 @@
+<?php
+/*HOOK MENU*/
+function cupcakes_menu() {
+    $items['invoice'] = array(
+		'title callback'   => 'Create Invoice',
+		'page callback' 		=> 'drupal_get_form',
+		'page arguments' 		=> array('invoice_add_form'),
+		//'access callback' => 'user_access',
+		//'access arguments' => array('create articulo content'),
+		'access callback' => TRUE,
+		'type' => MENU_LOCAL_TASK,
+    );
+    
+   
+	return $items;
+}
+
+function invoice_add_form_submit($form, &$form_state)
+{
+	
+	global $user;
+	$node = new stdClass();
+	$node->title = $form_state['values']['name'];
+	$node->type = "invoice";
+	$node->uid = $user->uid; 
+	$node->field_id['und'][0]['value']=$form_state['values']['id'];
+	$node->field_address['und'][0]['value']=$form_state['values']['address'];
+	$node->field_movil['und'][0]['value']=$form_state['values']['phone'];
+	$node->status = 1; 
+	$node->promote = 0; 
+	$node->comment = 1; 
+	
+	$node = node_submit($node);	
+	node_save($node);
+	
+	$i=0;
+	$cupcakes=get_cupcakes_types();
+	foreach($cupcakes as $tid => $cupcake)
+	{
+		$oCupcake=get_cupcake_info($tid);
+		$price=$oCupcake->field_price['und'][0]['value'];
+		$discount=$oCupcake->field_discount['und'][0]['value'];
+		$cost=$price*((100-$discount)/100);
+		$quantity=$form_state['values']["q_$tid"];
+		$subtotal=$cost*$quantity;
+		if($quantity!=0)
+		{
+			$item = new stdClass();
+			$item->title = $oCupcake->name;
+			$item->type = "item";
+			$item->uid = $user->uid; 
+			$item->field_cupcake['und'][0]['tid']=$tid;
+			$item->field_item_price['und'][0]['value']=$price;
+			$item->field_item_discount['und'][0]['value']=$discount;
+			$item->field_item_unit_price['und'][0]['value']=$cost;
+			$item->field_item_sub_total['und'][0]['value']=$subtotal;
+			$item->field_item_quantity['und'][0]['value']=$quantity;
+			$item->field_item_date['und'][0]['value']=date('Y/m/01 00:00:00 ', time());
+			$item->status = 1; 
+			$item->promote = 0; 
+			$item->comment = 1; 
+			
+			node_save($item);
+			
+			$node->field_items['und'][$i]['nid']=$item->nid;
+			$i++;
+		}
+	}
+
+	node_save($node);
+	drupal_set_message("The invoice # ".$node->nid." was created");
+	$form_state['redirect']  = 'node/'.$node->nid;
+}
+
+function invoice_add_form($form, &$form_state)
+{
+	//drupal_set_message(print_r($cupcakes,true));
+
+	$form['customer']['name']=array(
+	   '#type' => 'textfield',
+	   '#title' => t('Customer Name:'),
+	   '#size'=>'50',
+	);
+	$form['customer']['id']=array(
+	   '#type' => 'textfield',
+	   '#title' => t('Customer Id:'),
+	   '#size'=>'50',
+	);
+	$form['customer']['phone']=array(
+	   '#type' => 'textfield',
+	   '#title' => t('Phone:'),
+	   '#size'=>'50',
+	);
+	$form['customer']['address']=array(
+	   '#type' => 'textfield',
+	   '#title' => t('Address:'),
+	   '#size'=>'50',
+	);
+
+	$cupcakes=get_cupcakes_types();
+	$thead="<thead><tr> <th>Cod</th> <th>Image</th> <th>Name</th> <th>Quantity</th> <th>Price</th> <th>Discount</th> <th>Unit cost</th> </tr></thead>";
+	
+	$i=0;
+	$form['table'][$i][]=array("#type"=>"markup", "#markup"=>"<table border=1>$thead");
+	foreach($cupcakes as $tid => $cupcake)
+	{
+		$oCupcake=get_cupcake_info($tid);
+		$name=$oCupcake->name;
+		$price=$oCupcake->field_price['und'][0]['value'];
+		$discount=$oCupcake->field_discount['und'][0]['value'];
+		$cost=$price*((100-$discount)/100);
+		$img="<img width='30px' src=".file_create_url($oCupcake->field_photo_cupcake['und'][0]['uri'])." />";
+		//drupal_set_message(print_r($oCupcake,true));
+		$form['table'][$i]["cod"]=array("#type"=>"markup", "#markup"=>$oCupcake->tid, "#prefix"=>"<tr><td>", "#suffix"=>"</td>");
+		$form['table'][$i]["image"]=array("#type"=>"markup", "#markup"=>$img , "#prefix"=>"<td>", "#suffix"=>"</td>");
+		$form['table'][$i]["name"]=array("#type"=>"markup", "#markup"=>$name , "#prefix"=>"<td>", "#suffix"=>"</td>");
+		$form['table'][$i]["q_$tid"]=array("#type"=>"textfield", "#name"=>"q_$tid" ,"#default_value"=>"0" ,"#size"=>"5", "#prefix"=>"<td>", "#suffix"=>"</td>");
+		$form['table'][$i]["price"]=array("#type"=>"markup", "#markup"=>"$".$price , "#prefix"=>"<td>", "#suffix"=>"</td>");
+		$form['table'][$i]["discount"]=array("#type"=>"markup", "#markup"=>$discount."%" , "#prefix"=>"<td>", "#suffix"=>"</td>");
+		$form['table'][$i]["cost"]=array("#type"=>"markup", "#markup"=>"$".$cost , "#prefix"=>"<td>", "#suffix"=>"</td></tr>");
+		$i++;
+	}
+	$form['table'][$i][]=array("#type"=>"markup", "#markup"=>"</table>");
+	
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value'=> 'Invoice'
+	);
+
+	return $form;
+}
+
+
+function cupcakes_views_query_alter(&$view, &$query) {
+  // (Example assuming a view with an exposed filter on node title.)
+  // If the input for the title filter is a positive integer, filter against
+  // node ID instead of node title.
+  //print_r($view->name);
+  
+  if($view->name="sales_by_month")
+  {
+		//$query->addExpression("node_created", 'MONTH');
+		$view->query->add_field(NULL, "1
+		", 'MONTH');
+		//print_r($query);
+	  
+  }
+}
+
+function get_cupcakes_types() {
+  $terms = taxonomy_get_tree(3);
+
+ $output=array();
+ foreach ($terms as $data) {
+    $output[$data->tid] = $data->name;
+ }
+
+  return $output;
+}
+
+
+function get_cupcake_info($tid){
+	$term = taxonomy_term_load($tid);
+	return $term;
+}
